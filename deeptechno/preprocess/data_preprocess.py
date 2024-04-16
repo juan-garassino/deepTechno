@@ -4,21 +4,12 @@ import pickle
 import json
 import random
 
-import third_party.midi_processor.processor as midi_processor
+from deepTechno.preprocess.midi_preprocess import encode_midi
 
 JSON_FILE = "maestro-v2.0.0.json"
 
 # prep_midi
 def prep_maestro_midi(maestro_root, output_dir):
-    """
-    ----------
-    Author: Damon Gwinn
-    ----------
-    Pre-processes the maestro dataset, putting processed midi data (train, eval, test) into the
-    given output folder
-    ----------
-    """
-
     train_dir = os.path.join(output_dir, "train")
     os.makedirs(train_dir, exist_ok=True)
     val_dir = os.path.join(output_dir, "val")
@@ -58,7 +49,7 @@ def prep_maestro_midi(maestro_root, output_dir):
             print("ERROR: Unrecognized split type:", split_type)
             return False
 
-        prepped = midi_processor.encode_midi(mid)
+        prepped = encode_midi(mid)
 
         o_stream = open(o_file, "wb")
         pickle.dump(prepped, o_stream)
@@ -74,14 +65,6 @@ def prep_maestro_midi(maestro_root, output_dir):
     return True
 
 def prep_custom_midi(custom_midi_root, output_dir, valid_p = 0.1, test_p = 0.2):
-    """
-    ----------
-    Author: Corentin Nelias
-    ----------
-    Pre-processes custom midi files that are not part of the maestro dataset, putting processed midi data (train, eval, test) into the
-    given output folder. 
-    ----------
-    """
     train_dir = os.path.join(output_dir, "train")
     os.makedirs(train_dir, exist_ok=True)
     val_dir = os.path.join(output_dir, "val")
@@ -121,7 +104,7 @@ def prep_custom_midi(custom_midi_root, output_dir, valid_p = 0.1, test_p = 0.2):
             o_file = os.path.join(test_dir, f_name)
             test_count += 1
         
-        prepped = midi_processor.encode_midi(mid)
+        prepped = encode_midi(mid)
 
         o_stream = open(o_file, "wb")
         pickle.dump(prepped, o_stream)
@@ -139,35 +122,19 @@ def prep_custom_midi(custom_midi_root, output_dir, valid_p = 0.1, test_p = 0.2):
 
 # parse_args
 def parse_args():
-    """
-    ----------
-    Author: Damon Gwinn
-    ----------
-    Parses arguments for preprocess_midi using argparse
-    ----------
-    """
-
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("root", type=str, help="Root folder for the Maestro dataset or for custom data.")
-    parser.add_argument("-output_dir", type=str, default="./dataset/e_piano", help="Output folder to put the preprocessed midi into.")
+    parser.add_argument("--root", type=str, help="Root folder for the Maestro dataset or for custom data.")
+    parser.add_argument("--output_dir", type=str, default="./dataset/e_piano", help="Output folder to put the preprocessed midi into.")
     parser.add_argument("--custom_dataset", action="store_true", help="Whether or not the specified root folder contains custom data.")
 
     return parser.parse_args()
 
 # main
 def main():
-    """
-    ----------
-    Author: Damon Gwinn
-    ----------
-    Entry point. Preprocesses maestro and saved midi to specified output folder.
-    ----------
-    """
-
-    args            = parse_args()
-    root    = args.root
-    output_dir      = args.output_dir
+    args = parse_args()
+    root = args.root
+    output_dir = args.output_dir
 
     print("Preprocessing midi files and saving to", output_dir)
     if args.custom_dataset:

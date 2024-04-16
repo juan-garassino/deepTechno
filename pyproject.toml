@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "deeptechno"
+name = "deepTechno"
 version = "0.1.0"
 description = ""
 authors = ["juan garassino <juan.garassino@gmail.com>"]
@@ -7,6 +7,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+torch = "^2.2.2"
+pretty-midi = "^0.2.10"
 
 
 [build-system]
