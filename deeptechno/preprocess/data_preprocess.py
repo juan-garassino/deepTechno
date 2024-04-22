@@ -1,148 +1,104 @@
-import argparse
-import os
-import pickle
-import json
-import random
-
 from deepTechno.preprocess.midi_preprocess import encode_midi
+from deepTechno.manager.manager import Manager
 
-JSON_FILE = "maestro-v2.0.0.json"
+import pretty_midi
+import collections
+import pandas as pd
+import numpy as np
 
-# prep_midi
-def prep_maestro_midi(maestro_root, output_dir):
-    train_dir = os.path.join(output_dir, "train")
-    os.makedirs(train_dir, exist_ok=True)
-    val_dir = os.path.join(output_dir, "val")
-    os.makedirs(val_dir, exist_ok=True)
-    test_dir = os.path.join(output_dir, "test")
-    os.makedirs(test_dir, exist_ok=True)
+def print_note_info(instrument):
+    """
+    Print information about notes in the instrument.
 
-    maestro_json_file = os.path.join(maestro_root, JSON_FILE)
-    if(not os.path.isfile(maestro_json_file)):
-        print("ERROR: Could not find file:", maestro_json_file)
-        return False
+    Args:
+    - instrument (pretty_midi.Instrument): Instrument object from PrettyMIDI.
+    """
+    for i, note in enumerate(instrument.notes[:10]):
+        note_name = pretty_midi.note_number_to_name(note.pitch)
+        duration = note.end - note.start
+        print(f'{i}: pitch={note.pitch}, note_name={note_name}, duration={duration:.4f}')
 
-    maestro_json = json.load(open(maestro_json_file, "r"))
-    print("Found", len(maestro_json), "pieces")
-    print("Preprocessing...")
+def midi_to_notes(midi_file: str) -> pd.DataFrame:
+    """
+    Convert MIDI file to DataFrame containing note information.
 
-    total_count = 0
-    train_count = 0
-    val_count   = 0
-    test_count  = 0
+    Args:
+    - midi_file (str): Path to the MIDI file.
 
-    for piece in maestro_json:
-        mid         = os.path.join(maestro_root, piece["midi_filename"])
-        split_type  = piece["split"]
-        f_name      = mid.split("/")[-1] + ".pickle"
+    Returns:
+    - pd.DataFrame: DataFrame containing note information (pitch, start time, end time, step, duration).
+    """
+    pm = pretty_midi.PrettyMIDI(midi_file)
+    instrument = pm.instruments[0]
+    notes = collections.defaultdict(list)
 
-        if(split_type == "train"):
-            o_file = os.path.join(train_dir, f_name)
-            train_count += 1
-        elif(split_type == "validation"):
-            o_file = os.path.join(val_dir, f_name)
-            val_count += 1
-        elif(split_type == "test"):
-            o_file = os.path.join(test_dir, f_name)
-            test_count += 1
-        else:
-            print("ERROR: Unrecognized split type:", split_type)
-            return False
+    # Sort the notes by start time
+    sorted_notes = sorted(instrument.notes, key=lambda note: note.start)
+    prev_start = sorted_notes[0].start
 
-        prepped = encode_midi(mid)
+    for note in sorted_notes:
+        start = note.start
+        end = note.end
+        notes['pitch'].append(note.pitch)
+        notes['start'].append(start)
+        notes['end'].append(end)
+        notes['step'].append(start - prev_start)
+        notes['duration'].append(end - start)
+        prev_start = start
 
-        o_stream = open(o_file, "wb")
-        pickle.dump(prepped, o_stream)
-        o_stream.close()
+    return pd.DataFrame({name: np.array(value) for name, value in notes.items()})
 
-        total_count += 1
-        if(total_count % 50 == 0):
-            print(total_count, "/", len(maestro_json))
+def get_note_names(pitch_array):
+    """
+    Convert MIDI pitch numbers to note names.
 
-    print("Num Train:", train_count)
-    print("Num Val:", val_count)
-    print("Num Test:", test_count)
-    return True
+    Args:
+    - pitch_array (np.array): Array of MIDI pitch numbers.
 
-def prep_custom_midi(custom_midi_root, output_dir, valid_p = 0.1, test_p = 0.2):
-    train_dir = os.path.join(output_dir, "train")
-    os.makedirs(train_dir, exist_ok=True)
-    val_dir = os.path.join(output_dir, "val")
-    os.makedirs(val_dir, exist_ok=True)
-    test_dir = os.path.join(output_dir, "test")
-    os.makedirs(test_dir, exist_ok=True)
-    
-    print("Found", len(os.listdir(custom_midi_root)), "pieces")
-    print("Preprocessing custom data...")
-    total_count = 0
-    train_count = 0
-    val_count   = 0
-    test_count  = 0
-    
-    for piece in os.listdir(custom_midi_root):
-        #deciding whether the data should be part of train, valid or test dataset
-        is_train = True if random.random() > valid_p else False
-        if not is_train:
-            is_valid = True if random.random() > test_p else False
-        if is_train:
-            split_type  = "train"
-        elif is_valid:
-            split_type = "validation"
-        else:
-            split_type = "test"
-            
-        mid         = os.path.join(custom_midi_root, piece)
-        f_name      = piece.split(".")[0] + ".pickle"
+    Returns:
+    - np.array: Array of corresponding note names.
+    """
+    get_note_name = np.vectorize(pretty_midi.note_number_to_name)
+    return get_note_name(pitch_array)
 
-        if(split_type == "train"):
-            o_file = os.path.join(train_dir, f_name)
-            train_count += 1
-        elif(split_type == "validation"):
-            o_file = os.path.join(val_dir, f_name)
-            val_count += 1
-        elif(split_type == "test"):
-            o_file = os.path.join(test_dir, f_name)
-            test_count += 1
-        
-        prepped = encode_midi(mid)
+import os
+import pretty_midi
 
-        o_stream = open(o_file, "wb")
-        pickle.dump(prepped, o_stream)
-        o_stream.close()
+def find_unique_notes(dataset_folder):
+    unique_notes = set()
 
-        total_count += 1
-        if(total_count % 50 == 0):
-            print(total_count, "/", len(os.listdir(custom_midi_root)))
+    # Iterate over all MIDI files in the dataset folder
+    for root, _, files in os.walk(dataset_folder):
+        for file in files:
+            if file.endswith(".midi") or file.endswith(".mid"):
+                midi_path = os.path.join(root, file)
+                pm = pretty_midi.PrettyMIDI(midi_path)
 
-    print("Num Train:", train_count)
-    print("Num Val:", val_count)
-    print("Num Test:", test_count)
-    return True
+                # Extract notes from each MIDI file
+                for instrument in pm.instruments:
+                    for note in instrument.notes:
+                        # Add each note to the set of unique notes
+                        unique_notes.add(note.pitch)
 
-
-# parse_args
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--root", type=str, help="Root folder for the Maestro dataset or for custom data.")
-    parser.add_argument("--output_dir", type=str, default="./dataset/e_piano", help="Output folder to put the preprocessed midi into.")
-    parser.add_argument("--custom_dataset", action="store_true", help="Whether or not the specified root folder contains custom data.")
-
-    return parser.parse_args()
-
-# main
-def main():
-    args = parse_args()
-    root = args.root
-    output_dir = args.output_dir
-
-    print("Preprocessing midi files and saving to", output_dir)
-    if args.custom_dataset:
-        prep_custom_midi(root, output_dir)
-    else:
-        prep_maestro_midi(root, output_dir)
-    print("Done!")
-    print("")
+    return unique_notes
 
 if __name__ == "__main__":
-    main()
+    # Example usage:
+    midi = './dataset/maestro-v2.0.0/2013/ORIG-MIDI_03_7_6_13_Group__MID--AUDIO_09_R1_2013_wav--2.midi'
+    # Print note information for the first 10 notes in an instrument
+    pm = pretty_midi.PrettyMIDI(midi)
+    instrument = pm.instruments[0]
+    print_note_info(instrument)
+
+    # Convert MIDI file to DataFrame containing note information
+    notes_df = midi_to_notes(midi)
+    print(notes_df.head())
+
+    # Convert MIDI pitch numbers to note names
+    pitch_array = np.array([60, 62, 64, 65, 67, 69, 71, 72])
+    note_names = get_note_names(pitch_array)
+    print(note_names)
+
+    temps = find_unique_notes('./dataset/maestro-v2.0.0')
+    
+    print(temps)

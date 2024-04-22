@@ -9,6 +9,11 @@ readme = "README.md"
 python = "^3.10"
 torch = "^2.2.2"
 pretty-midi = "^0.2.10"
+tensorflow = "^2.16.1"
+pandas = "^2.2.2"
+matplotlib = "^3.8.4"
+pydub = "^0.25.1"
+ipython = "^8.23.0"
 
 
 [build-system]
