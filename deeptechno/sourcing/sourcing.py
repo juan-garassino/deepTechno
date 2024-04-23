@@ -1,12 +1,11 @@
 import tensorflow as tf
-import pathlib
 import os
 import csv
-import os
-import tensorflow as tf
-from deepTechno.manager.manager import Manager
 import pandas as pd
-import random
+import zipfile
+import tensorflow as tf
+
+from deepTechno.manager.manager import Manager
 
 def download_maestro_dataset(data_dir):
     """
@@ -21,30 +20,46 @@ def download_maestro_dataset(data_dir):
     # Check if the data directory exists
     if not os.path.exists(data_dir):
         # Download and extract the dataset
-        dataset_path = tf.keras.utils.get_file(
+        data_dir = tf.keras.utils.get_file(
             'maestro-v2.0.0-midi.zip',
             origin='https://storage.googleapis.com/magentadata/datasets/maestro/v2.0.0/maestro-v2.0.0-midi.zip',
             extract=True,
-            cache_dir='.',
-            cache_subdir='dataset'
+            cache_dir=data_dir,
+            cache_subdir='maestro-v2.0.0'
         )
-        return dataset_path
+        return data_dir
     else:
-        print("Dataset already exists in", data_dir)
-        dataset_path = os.path.join(data_dir, "maestro-v2.0.0-midi")
-        if os.path.exists(dataset_path):
-            return dataset_path
+        print("Dataset directory exists in", data_dir)
+        # dataset_folder = os.path.join(data_dir, "maestro-v2.0.0")
+        if os.path.exists(data_dir):
+            # Check if the dataset folder is empty
+            if not os.listdir(data_dir):
+                print("Dataset directory is empty. Downloading the dataset...")
+                # Download and extract the dataset
+                dataset_zip_path = tf.keras.utils.get_file(
+                    'maestro-v2.0.0-midi.zip',
+                    origin='https://storage.googleapis.com/magentadata/datasets/maestro/v2.0.0/maestro-v2.0.0-midi.zip',
+                    extract=True,
+                    cache_dir=data_dir,
+                    cache_subdir='maestro-v2.0.0'
+                )
+                # Unzip the downloaded dataset
+                with zipfile.ZipFile(dataset_zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(data_dir)
+                return data_dir
+            else:
+                return data_dir
         else:
-            print("Error: Dataset not found in the specified directory:", data_dir)
+            print("Error: Dataset folder not found in the specified directory:", data_dir)
             return None
 
-def find_midi_files(dataset_folder, csv_file):
+def find_midi_files(dataset_folder, csv_filename):
     """
     Find all MIDI files within subfolders of the dataset folder and save their directories to a CSV file.
 
     Args:
     - dataset_folder (str): Path to the dataset folder.
-    - csv_file (str): Path to the CSV file to save the directories.
+    - csv_filename (str): Name of the CSV file to save the directories.
 
     Returns:
     - list: List of directories of the found MIDI files.
@@ -59,32 +74,38 @@ def find_midi_files(dataset_folder, csv_file):
                 midi_path = os.path.join(root, file)
                 midi_files.append(midi_path)
 
-    # Create the directories to the CSV file if it doesn't exist
-    os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+    # Construct full path to the CSV file
+    csv_file = os.path.join(dataset_folder, csv_filename)
 
-    # Save the directories to a CSV file
-    with open(csv_file, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(["midi_file"])  # Write header
-        for midi_file in midi_files:
-            writer.writerow([midi_file])
+    # Check if MIDI files are found before creating the CSV file
+    if midi_files:
+        # Save the directories to a CSV file
+        with open(csv_file, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["midi_file"])  # Write header
+            for midi_file in midi_files:
+                writer.writerow([midi_file])
+    else:
+        print("No MIDI files found in the dataset folder.")
 
     return midi_files, csv_file
 
-def split_csv(csv_file, train_csv, val_csv, test_csv, train_p=0.6, val_p=0.2, test_p=0.2):
+def split_csv(csv_file, train_csv, val_csv, test_csv, train_p=0.6, val_p=0.2, test_p=0.2, data_dir="."):
     """
     Split the CSV file into three separate CSV files for train, validation, and test sets.
 
     Args:
     - csv_file (str): Path to the input CSV file.
-    - train_csv (str): Path to save the CSV file for the train set.
-    - val_csv (str): Path to save the CSV file for the validation set.
-    - test_csv (str): Path to save the CSV file for the test set.
+    - train_csv (str): Name of the CSV file for the train set.
+    - val_csv (str): Name of the CSV file for the validation set.
+    - test_csv (str): Name of the CSV file for the test set.
     - train_p (float): Proportion of data to include in the train set.
     - val_p (float): Proportion of data to include in the validation set.
     - test_p (float): Proportion of data to include in the test set.
+    - data_dir (str): Directory where the CSV files will be saved.
     """
     # Read the original CSV file
+    csv_file = os.path.join(data_dir, csv_file)
     df = pd.read_csv(csv_file)
 
     # Shuffle the rows
@@ -101,6 +122,11 @@ def split_csv(csv_file, train_csv, val_csv, test_csv, train_p=0.6, val_p=0.2, te
     val_set = df.iloc[num_train:num_train + num_val]
     test_set = df.iloc[num_train + num_val:]
 
+    # Construct full paths for the CSV files
+    train_csv = os.path.join(data_dir, train_csv)
+    val_csv = os.path.join(data_dir, val_csv)
+    test_csv = os.path.join(data_dir, test_csv)
+
     # Save the split datasets to CSV files
     train_set.to_csv(train_csv, index=False)
     val_set.to_csv(val_csv, index=False)
@@ -108,22 +134,53 @@ def split_csv(csv_file, train_csv, val_csv, test_csv, train_p=0.6, val_p=0.2, te
 
     print("Split data into train, validation, and test sets successfully.")
 
+def create_sequences(
+    dataset: tf.data.Dataset, 
+    seq_length: int,
+    vocab_size = 128,
+    key_order = []
+) -> tf.data.Dataset:
+  """Returns TF Dataset of sequence and label examples."""
+  seq_length = seq_length+1
+
+  # Take 1 extra for the labels
+  windows = dataset.window(seq_length, shift=1, stride=1,
+                              drop_remainder=True)
+
+  # `flat_map` flattens the" dataset of datasets" into a dataset of tensors
+  flatten = lambda x: x.batch(seq_length, drop_remainder=True)
+  sequences = windows.flat_map(flatten)
+
+  # Normalize note pitch
+  def scale_pitch(x):
+    x = x/[vocab_size,1.0,1.0]
+    return x
+
+  # Split the labels
+  def split_labels(sequences):
+    inputs = sequences[:-1]
+    labels_dense = sequences[-1]
+    labels = {key:labels_dense[i] for i,key in enumerate(key_order)}
+
+    return scale_pitch(inputs), labels
+
+  return sequences.map(split_labels, num_parallel_calls=tf.data.AUTOTUNE)
+
 if __name__ == "__main__":
     
-    data_dir = "./dataset/maestro-v2.0.0"  # Change this to your desired directory
+    args = Manager().parse_args()
     
-    dataset_path = download_maestro_dataset(data_dir)
+    data_dir = os.path.join(os.environ.get('HOME'), args.root + args.data_dir)
     
-    print("Dataset path:", dataset_path)
+    temps = download_maestro_dataset(data_dir)
+    
+    print("Dataset path:", data_dir)
 
-    csv_file = os.path.join(data_dir, "maestro.csv")  # Construct the CSV file path
-    
-    print("CSV file path:", csv_file)
+    midi_files, csv_file = find_midi_files(data_dir, "my-maestro.csv")
 
     print("First few rows of the CSV file:")
     
-    midi_files, csv_file = find_midi_files(data_dir, csv_file)
+    split_csv("my-maestro.csv", "train-maestro.csv", "val-maestro.csv", "test-maestro.csv", train_p=0.6, val_p=0.2, test_p=0.2, data_dir=data_dir)
 
-    split_csv(csv_file, "train.csv", "val.csv", "test.csv", train_p=0.6, val_p=0.2, test_p=0.2)
-
-    print("first",  midi_files[1])
+    Manager.play_midi(midi_files[1])
+    # print("first",  midi_files[1])

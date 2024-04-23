@@ -1,6 +1,6 @@
-from deepTechno.preprocess.midi_preprocess import encode_midi
+from deepTechno.preprocess.midi_encoder_decoder import encode_midi
 from deepTechno.manager.manager import Manager
-
+import os
 import pretty_midi
 import collections
 import pandas as pd
@@ -48,6 +48,35 @@ def midi_to_notes(midi_file: str) -> pd.DataFrame:
 
     return pd.DataFrame({name: np.array(value) for name, value in notes.items()})
 
+def notes_to_midi(
+  notes: pd.DataFrame,
+  out_file: str, 
+  instrument_name: str,
+  velocity: int = 100,  # note loudness
+) -> pretty_midi.PrettyMIDI:
+
+  pm = pretty_midi.PrettyMIDI()
+  instrument = pretty_midi.Instrument(
+      program=pretty_midi.instrument_name_to_program(
+          instrument_name))
+
+  prev_start = 0
+  for i, note in notes.iterrows():
+    start = float(prev_start + note['step'])
+    end = float(start + note['duration'])
+    note = pretty_midi.Note(
+        velocity=velocity,
+        pitch=int(note['pitch']),
+        start=start,
+        end=end,
+    )
+    instrument.notes.append(note)
+    prev_start = start
+
+  pm.instruments.append(instrument)
+  pm.write(out_file)
+  return pm
+
 def get_note_names(pitch_array):
     """
     Convert MIDI pitch numbers to note names.
@@ -60,9 +89,6 @@ def get_note_names(pitch_array):
     """
     get_note_name = np.vectorize(pretty_midi.note_number_to_name)
     return get_note_name(pitch_array)
-
-import os
-import pretty_midi
 
 def find_unique_notes(dataset_folder):
     unique_notes = set()
@@ -87,18 +113,23 @@ if __name__ == "__main__":
     midi = './dataset/maestro-v2.0.0/2013/ORIG-MIDI_03_7_6_13_Group__MID--AUDIO_09_R1_2013_wav--2.midi'
     # Print note information for the first 10 notes in an instrument
     pm = pretty_midi.PrettyMIDI(midi)
+    
     instrument = pm.instruments[0]
+    
     print_note_info(instrument)
 
     # Convert MIDI file to DataFrame containing note information
     notes_df = midi_to_notes(midi)
+    
     print(notes_df.head())
 
     # Convert MIDI pitch numbers to note names
     pitch_array = np.array([60, 62, 64, 65, 67, 69, 71, 72])
+    
     note_names = get_note_names(pitch_array)
+    
     print(note_names)
 
-    temps = find_unique_notes('./dataset/maestro-v2.0.0')
+    # temps = find_unique_notes('./dataset/maestro-v2.0.0')
     
-    print(temps)
+    # print(temps)

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.loss import _Loss
+import tensorflow as tf
 
 # Borrowed from https://github.com/jason9693/MusicTransformer-pytorch/blob/5f183374833ff6b7e17f3a24e3594dedd93a5fe5/custom/criterion.py#L28
 class SmoothCrossEntropyLoss(_Loss):
@@ -44,3 +45,8 @@ class SmoothCrossEntropyLoss(_Loss):
 
     def cross_entropy_with_logits(self, p, q):
         return -torch.sum(p * (q - q.logsumexp(dim=-1, keepdim=True)), dim=-1)
+
+def mse_with_positive_pressure_LSTM(y_true: tf.Tensor, y_pred: tf.Tensor):
+  mse = (y_true - y_pred) ** 2
+  positive_pressure = 10 * tf.maximum(-y_pred, 0.0)
+  return tf.reduce_mean(mse + positive_pressure)

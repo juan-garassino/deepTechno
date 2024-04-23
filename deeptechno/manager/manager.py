@@ -3,10 +3,9 @@ import pretty_midi
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from pydub import AudioSegment
-from pydub.playback import play
 from typing import Optional
 from IPython import display
+import numpy as np
 
 class Manager:
     _SAMPLING_RATE = 44100  # Sample rate for audio playback
@@ -16,25 +15,18 @@ class Manager:
         parser = argparse.ArgumentParser()
 
         parser.add_argument("--root", type=str, default='Code/juan-garassino/mySandbox/deepTechno', help="Root folder for the Maestro dataset or for custom data.")
-        parser.add_argument("--data_dir", type=str, default="/dataset/maestro", help="Root folder for the Maestro dataset or for custom data.")
+        parser.add_argument("--data_dir", type=str, default="/dataset", help="Root folder for the Maestro dataset or for custom data.")
         parser.add_argument("--output_dir", type=str, default="./dataset/e_piano", help="Output folder to put the preprocessed midi into.")
         parser.add_argument("--custom_dataset", action="store_true", help="Whether or not the specified root folder contains custom data.")
 
         return parser.parse_args()
 
     @staticmethod
-    def display_audio(pm: pretty_midi.PrettyMIDI, seconds=30):
+    def display_audio_notebook(pm: pretty_midi.PrettyMIDI, seconds=30):
         waveform = pm.fluidsynth(fs=Manager._SAMPLING_RATE)
         # Take a sample of the generated waveform to mitigate kernel resets
         waveform_short = waveform[:seconds*Manager._SAMPLING_RATE]
         return display.Audio(waveform_short, rate=Manager._SAMPLING_RATE)
-
-    @staticmethod
-    def play_audio(file_path: str):
-        # Load the audio file
-        audio = AudioSegment.from_file(file_path)
-        # Play the audio
-        play(audio)
 
     @staticmethod
     def plot_piano_roll(notes: pd.DataFrame, count: Optional[int] = None):
